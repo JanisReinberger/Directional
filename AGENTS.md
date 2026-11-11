@@ -30,34 +30,50 @@ No JS package manager; C++ dependencies are git submodules. Docs env via `Pipfil
 ## CI
 None detected (no `.github/` workflows).
 
-## Branching & PR workflow
+## Branching & PR workflow (strict runbook — agents must follow this)
 
-Three-branch model:
+Remotes:
+- `upstream` — `avaxman/Directional`, the original library. PRs target its `master`. Read-only for us.
+- `origin` — the fork (`JanisReinberger/Directional`): backup of `dev` + source of PR branches.
 
-- `master` — pristine mirror of upstream (`avaxman/Directional`). **Never commit to it.**
-  Only fast-forward it when upstream moves:
-  `git fetch origin && git checkout master && git merge --ff-only origin/master`
-- `dev` — the daily-driver branch. All normal work, env commits (AGENTS.md, gitignore,
-  setup notes, `sandbox:`-prefixed fixes) and building happen here. Push it to the fork
-  as backup: `git push origin dev`.
-- `feature/<name>` — clean PR branches cut from `master`, containing **only** feature
-  commits (no env changes). Current: `feature/rounding` (batch epsilon-rounding, then
-  singularity rounding targets stacked on top — the second uses the first's helpers).
+Branches:
+- `master` — pristine mirror of `upstream/master`. **Never commit here, never force-push.**
+  Update only by fast-forward:
+  `git fetch upstream && git checkout master && git merge --ff-only upstream/master`
+- `dev` — personal branch = `master` + local env commits only (AGENTS.md, `.sandbox/SETUP_NOTES.md`,
+  `.gitignore` tweaks, local build fixes). Agent sessions run on this branch.
+  Back it up (operator pushes; agents never push): `git push origin dev`
+- `feature/<name>` — ephemeral PR branch = `master` + **only** the improvement commits.
+  `dev` and `feature/*` are **siblings**: neither may ever become an ancestor of the other.
+  Current: `feature/rounding` (epsilonRound + roundingOffset; `git diff master...feature/rounding`
+  touches only `include/directional/{integrate,setup_integration}.h` and the 503/505 tutorials).
 
 ### Opening a PR
-1. Cut from `master`: `git checkout -b feature/<name> master`
-2. Work/commit there, or cherry-pick feature SHAs from `dev`:
-   `git cherry-pick <shas>`
-3. Guardrail — the diff must list only feature files:
+1. Independent feature: `git checkout -b feature/<name> master`
+   Stacked on an open PR (uses its helpers): `git checkout -b feature/<name> feature/<parent>`
+2. Bring in the work: `git cherry-pick <shas>` from `dev` (or from the parent feature branch).
+3. Guardrail — must list only library/tutorial files, never env files:
    `git diff master...feature/<name> --stat`
-4. Push to the fork and open the PR against `avaxman/Directional` master.
+4. Operator pushes and opens the PR against `upstream/master`: `git push -u origin feature/<name>`
 
-### After upstream moves / a PR merges
-- Sync the mirror: `git fetch origin && git checkout master && git merge --ff-only origin/master`
-- Rebuild `dev` on top: `git rebase --onto master <old-master-sha> dev`
-  (or re-cherry-pick env commits onto the new master).
-- Once a PR merges upstream, its commits drop out of the stack automatically
-  (e.g. the batch-rounding PR's diff shrinks when the half-integer PR merges).
+### NEVER
+- Reset/move/merge `dev` **onto** a `feature/*` branch — dev stays a *sibling* of feature
+  branches, never their descendant (this mistake happened once; fixed by rebuilding dev from master)
+- Commit on `master`; force-push anything except your own `feature/<name>` after review fixes
+- Run `git filter-branch` / `filter-repo` on anything that has been pushed
+- Push from inside an agent sandbox (the operator pushes when they choose to)
+
+### When upstream moves / a PR merges
+- `git fetch upstream && git checkout master && git merge --ff-only upstream/master`
+- `git rebase --onto master <old-master-sha> dev` — only env commits replay, always clean
+- `git branch -D feature/<name>`
+- Stacked PRs shrink automatically: `git rebase --onto master <parent-pr-tip> feature/<child>`
+
+### Testing a feature locally with your env
+Scratch branch — never pushed, never PR'd:
+`git checkout -b local/<name> feature/<name> && git merge dev`
+
+Housekeeping: `sandbox/*` branches and `refs/pi-publish/*` are agent-harness artifacts — ignore them.
 
 ## Conventions
 - Header-only library: each header generally provides one function; C++20 (`CMAKE_CXX_STANDARD 20`)
@@ -65,8 +81,9 @@ Three-branch model:
 - Polyscope `polyscope::show()` blocks — wrap GUI runs in `timeout` when headless
 
 ## Sandbox rules (host policy; full ref: `/home/agent/SANDBOX-WORKFLOWS.md`)
-- No root, read-only `/`; extra tooling lives in the git-ignored overlay `/workspace/.sandbox/`
-- Work strictly inside `/workspace`, scratch in `/tmp`; never push — commits publish automatically to the task branch
+- No root, read-only `/`; extra tooling lives in the overlay `/workspace/.sandbox/` (git-ignored via
+  `.git/info/exclude`, except `.sandbox/SETUP_NOTES.md`, which is tracked on `dev`)
+- Work strictly inside `/workspace`, scratch in `/tmp`; never push from the sandbox — the operator pushes
 - Persistent cross-run changes need a proposal in `/workspace/.sandbox-requests/`
 
 ## Build environment in this sandbox (details: `.sandbox/SETUP_NOTES.md`)
