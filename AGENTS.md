@@ -40,11 +40,14 @@ Branches:
 - `master` — pristine mirror of `upstream/master`. **Never commit here, never force-push.**
   Update only by fast-forward:
   `git fetch upstream && git checkout master && git merge --ff-only upstream/master`
-- `dev` — personal branch = `master` + local env commits only (AGENTS.md, `.sandbox/SETUP_NOTES.md`,
-  `.gitignore` tweaks, local build fixes). Agent sessions run on this branch.
+- `dev` — your working branch = `master` + env commits (AGENTS.md, `.sandbox/SETUP_NOTES.md`,
+  `.gitignore` tweaks, local build fixes) + any work in progress. Agent sessions run on this branch.
+  PR branches are extracted from it via cherry-pick — never merged into it.
   Back it up (operator pushes; agents never push): `git push origin dev`
 - `feature/<name>` — ephemeral PR branch = `master` + **only** the improvement commits.
   `dev` and `feature/*` are **siblings**: neither may ever become an ancestor of the other.
+  The same change may exist on both (dev holds a cherry-picked copy with a new SHA) — that is
+  fine; only the `feature/*` branch is ever pushed / PR'd.
   Current: `feature/rounding` (epsilonRound + roundingOffset; `git diff master...feature/rounding`
   touches only `include/directional/{integrate,setup_integration}.h` and the 503/505 tutorials).
 
@@ -52,26 +55,30 @@ Branches:
 1. Independent feature: `git checkout -b feature/<name> master`
    Stacked on an open PR (uses its helpers): `git checkout -b feature/<name> feature/<parent>`
 2. Bring in the work: `git cherry-pick <shas>` from `dev` (or from the parent feature branch).
+   To continue an open PR's work on `dev`: `git checkout dev && git cherry-pick <shas-from-feature-branch>`.
 3. Guardrail — must list only library/tutorial files, never env files:
    `git diff master...feature/<name> --stat`
 4. Operator pushes and opens the PR against `upstream/master`: `git push -u origin feature/<name>`
 
 ### NEVER
-- Reset/move/merge `dev` **onto** a `feature/*` branch — dev stays a *sibling* of feature
-  branches, never their descendant (this mistake happened once; fixed by rebuilding dev from master)
+- Merge `feature/*` into `dev`, or reset/move `dev` onto a `feature/*` branch — dev stays a
+  *sibling* of feature branches, never their descendant. To get a PR branch's commits onto dev,
+  `git cherry-pick` them (new SHAs) — never `git merge`. (This mistake happened once; fixed by
+  rebuilding dev from master.)
 - Commit on `master`; force-push anything except your own `feature/<name>` after review fixes
 - Run `git filter-branch` / `filter-repo` on anything that has been pushed
 - Push from inside an agent sandbox (the operator pushes when they choose to)
 
 ### When upstream moves / a PR merges
 - `git fetch upstream && git checkout master && git merge --ff-only upstream/master`
-- `git rebase --onto master <old-master-sha> dev` — only env commits replay, always clean
+- `git rebase --onto master <old-master-sha> dev` — env commits replay cleanly; feature commits
+  that landed upstream with the same patch drop out automatically. If upstream squash-merged and
+  the rebase conflicts, recreate dev instead: `git checkout -b dev2 master && git cherry-pick <env-shas>`
 - `git branch -D feature/<name>`
 - Stacked PRs shrink automatically: `git rebase --onto master <parent-pr-tip> feature/<child>`
 
-### Testing a feature locally with your env
-Scratch branch — never pushed, never PR'd:
-`git checkout -b local/<name> feature/<name> && git merge dev`
+### Pulling an open PR's review fixes back onto dev
+`git checkout dev && git cherry-pick <new-shas>` — cherry-pick, never merge.
 
 Housekeeping: `sandbox/*` branches and `refs/pi-publish/*` are agent-harness artifacts — ignore them.
 
