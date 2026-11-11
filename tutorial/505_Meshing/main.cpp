@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 #include <Eigen/Core>
 #include <directional/TriMesh.h>
 #include <directional/PCFaceTangentBundle.h>
@@ -33,8 +34,17 @@ ViewingModes viewingMode=FIELD;
 
 
 
-int main()
+int main(int argc, char** argv)
 {
+    //optional CLI flags:
+    //  --epsilon-round <eps>    batch-round all values closer than eps to their target in one iteration (0 = greedy, default)
+    double epsilonRound = 0.0;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--epsilon-round" && i + 1 < argc)
+            epsilonRound = std::stod(argv[++i]);
+    }
+    std::cout<<"epsilonRound = "<<epsilonRound<<std::endl;
     
     directional::readOFF(TUTORIAL_DATA_PATH "/vase.off",meshWhole);
     ftb.init(meshWhole);
@@ -56,6 +66,7 @@ int main()
         intData.verbose=false;
         intData.integralSeamless=true;
         intData.roundSeams=false;
+        intData.epsilonRound=epsilonRound;
         
         std::cout<<"Solving integration for N="<<N[i]<<std::endl;
         directional::integrate(combedField[i],  intData, meshCut[i], NFunction[i],NCornerFunction[i]);

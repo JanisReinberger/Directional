@@ -55,9 +55,10 @@ struct IntegrationData
     //Flags
     bool integralSeamless;                              // Whether to do full translational seamless.
     bool roundSeams;                                    // Whether to round seams or round singularities
+    double epsilonRound;                                // Batch-rounding threshold: if > 0, all not-yet-fixed variables whose distance to their rounding target is < epsilonRound are pinned in a single iteration (the closest one is always pinned too, to guarantee progress); 0 = greedy one-at-a-time rounding (default)
     bool verbose;                                       // Output the integration log.
     
-    IntegrationData(int _N):lengthRatio(0.02), integralSeamless(false), roundSeams(true), verbose(false){
+    IntegrationData(int _N):lengthRatio(0.02), integralSeamless(false), roundSeams(true), epsilonRound(0.0), verbose(false){
         N=_N;
         n=(N%2==0 ? N/2 : N);
         if (N%2==0)

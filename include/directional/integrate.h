@@ -257,6 +257,7 @@ inline bool integrate(const directional::CartesianField& field,
         
         double minIntDiff = std::numeric_limits<double>::max();
         int minIntDiffIndex = -1;
+        std::vector<int> batchIndices;
         for (int i = 0; i < numVars; i++)
         {
             if ((fixedMask(i)) && (!alreadyFixed(i)))
@@ -265,6 +266,8 @@ inline bool integrate(const directional::CartesianField& field,
                 double func = fullx(i); //fullx.segment(intData.d*i,intData.d);
                 //for (int j=0;j<intData.d;j++)
                 currIntDiff += std::fabs(func - std::round(func));
+                if ((intData.epsilonRound > 0.0) && (currIntDiff < intData.epsilonRound))
+                    batchIndices.push_back(i);
                 if (currIntDiff < minIntDiff)
                 {
                     minIntDiff = currIntDiff;
@@ -273,6 +276,18 @@ inline bool integrate(const directional::CartesianField& field,
             }
         }
         
+        if (intData.epsilonRound > 0.0)
+        {
+            //batch-round: pin all variables below the epsilon threshold in one go
+            if (intData.verbose)
+                cout<<"batch-rounding "<<batchIndices.size()<<" variables (epsilonRound="<<intData.epsilonRound<<")"<<endl;
+            for (int idx : batchIndices)
+            {
+                alreadyFixed(idx) = 1;
+                fixedValues(idx) = std::round(fullx(idx));
+            }
+        }
+        //pin the closest variable as well (in greedy mode this is the only one; in batch mode it guarantees progress)
         if (minIntDiffIndex != -1)
         {
             alreadyFixed(minIntDiffIndex) = 1;
