@@ -3605,3 +3605,6 @@ tutorial/output/horsers-param-full-seamless.obj
 tutorial/output/horsers-param-rot-seamless.obj
 tutorial/output/index-prescription.rawfield
 tutorial/output/polyvector.rawfield
+
+# personal GUI layout state (ImGui window positions)
+tutorial/imgui.ini
