@@ -55,9 +55,11 @@ struct IntegrationData
     //Flags
     bool integralSeamless;                              // Whether to do full translational seamless.
     bool roundSeams;                                    // Whether to round seams or round singularities
+    double roundingOffset;                              // Rounding-target offset for singularities (used when roundSeams=false): 0 = nearest integer (default), 0.5 = nearest half-integer. Seam variables always round to integers.
+    double epsilonRound;                                // Batch-rounding threshold: if > 0, all not-yet-fixed variables whose distance to their rounding target is < epsilonRound are pinned in a single iteration (the closest one is always pinned too, to guarantee progress); 0 = greedy one-at-a-time rounding (default)
     bool verbose;                                       // Output the integration log.
     
-    IntegrationData(int _N):lengthRatio(0.02), integralSeamless(false), roundSeams(true), verbose(false){
+    IntegrationData(int _N):lengthRatio(0.02), integralSeamless(false), roundSeams(true), roundingOffset(0.0), epsilonRound(0.0), verbose(false){
         N=_N;
         n=(N%2==0 ? N/2 : N);
         if (N%2==0)
@@ -572,7 +574,7 @@ inline void setup_integration(const directional::CartesianField& field,
     if (isSingular.sum()==0){  //no inner singular vertices; vertex 0 is set to (0....0)
         for (int j=0;j<intData.n;j++)
             intData.fixedIndices(j)=j;
-    }else {  //fixing first singularity to (0.5,....0.5)
+    }else {  //fixing first singularity to 0 (integrate() shifts it to the rounding-target lattice, e.g. 0.5, when roundSeams=false and roundingOffset!=0)
         int firstSing;
         for (firstSing=0;firstSing<isSingular.size();firstSing++)
             if (isSingular(firstSing))

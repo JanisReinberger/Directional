@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 #include <Eigen/Core>
 #include <directional/readOFF.h>
 #include <directional/TriMesh.h>
@@ -73,8 +74,22 @@ void callbackFunc(){
 }
 
 
-int main()
+int main(int argc, char** argv)
 {
+    //optional CLI flags:
+    //  --rounding-offset <off>  rounding target for singularities when roundSeams=false (0 = integer, 0.5 = half-integer)
+    //  --epsilon-round <eps>    batch-round all values closer than eps to their target in one iteration (0 = greedy, default)
+    double roundingOffset = 0.0;
+    double epsilonRound = 0.0;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--rounding-offset" && i + 1 < argc)
+            roundingOffset = std::stod(argv[++i]);
+        else if (arg == "--epsilon-round" && i + 1 < argc)
+            epsilonRound = std::stod(argv[++i]);
+    }
+    std::cout<<"roundingOffset = "<<roundingOffset<<", epsilonRound = "<<epsilonRound<<std::endl;
+    
     directional::readOFF(TUTORIAL_DATA_PATH "/train-station.off", meshWhole);
     ftb.init(meshWhole);
     directional::read_raw_field(TUTORIAL_DATA_PATH "/train-station-5.rawfield", ftb, N, rawField);
@@ -90,12 +105,16 @@ int main()
     intData.verbose=false;
     intData.integralSeamless=true;
     intData.roundSeams=true;
+    intData.roundingOffset=roundingOffset;
+    intData.epsilonRound=epsilonRound;
     
     std::cout<<"Seams-rounding Integrating..."<<std::endl;
     directional::integrate(combedField, intData, meshCut,  NFunctionSeams,NCornerFunc);
     std::cout<<"Done!"<<std::endl;
     
     intData.roundSeams=false;
+    intData.roundingOffset=roundingOffset;
+    intData.epsilonRound=epsilonRound;
     directional::setup_integration(rawField, intData, meshCut,combedField);
     std::cout<<"Singularity-rounding integration..."<<std::endl;
     directional::integrate(combedField,  intData, meshCut, NFunctionSings,NCornerFunc);
