@@ -134,6 +134,27 @@ inline bool integrate(const directional::CartesianField& field,
     for (int i=0;i<intData.fixedValues.size();i++)
         fixedValues(intData.fixedIndices(i))=intData.fixedValues(i);
     
+    //mask of singularity variables; these are rounded to (integer + roundingOffset) when roundSeams=false,
+    //while seam (transition) variables always round to plain integers
+    VectorXi singularMask(numVars);
+    singularMask.setZero();
+    for (int i = 0; i < intData.singularIndices.size(); i++)
+        singularMask(intData.singularIndices(i)) = 1;
+    
+    //anchor fixed singularity variables to the rounding-target lattice (e.g. 0.5 for half-integer targets)
+    if (!intData.roundSeams)
+        for (int i = 0; i < intData.fixedIndices.size(); i++)
+            if (singularMask(intData.fixedIndices(i)))
+                fixedValues(intData.fixedIndices(i)) += intData.roundingOffset;
+    
+    auto varRoundingOffset = [&](int varIndex)->double {
+        return ((!intData.roundSeams) && (singularMask(varIndex))) ? intData.roundingOffset : 0.0;
+    };
+    //nearest rounding target of the form (integer + offset)
+    auto roundingTarget = [](double value, double offset)->double {
+        return std::round(value - offset) + offset;
+    };
+    
     SparseMatrix<double> Efull = d0 * intData.vertexTrans2CutMat * intData.linRedMat * intData.singIntSpanMat * intData.intSpanMat;
     VectorXd x, xprev;
     
@@ -262,10 +283,9 @@ inline bool integrate(const directional::CartesianField& field,
         {
             if ((fixedMask(i)) && (!alreadyFixed(i)))
             {
-                double currIntDiff =0;
                 double func = fullx(i); //fullx.segment(intData.d*i,intData.d);
                 //for (int j=0;j<intData.d;j++)
-                currIntDiff += std::fabs(func - std::round(func));
+                double currIntDiff = std::fabs(func - roundingTarget(func, varRoundingOffset(i)));
                 if ((intData.epsilonRound > 0.0) && (currIntDiff < intData.epsilonRound))
                     batchIndices.push_back(i);
                 if (currIntDiff < minIntDiff)
@@ -284,7 +304,7 @@ inline bool integrate(const directional::CartesianField& field,
             for (int idx : batchIndices)
             {
                 alreadyFixed(idx) = 1;
-                fixedValues(idx) = std::round(fullx(idx));
+                fixedValues(idx) = roundingTarget(fullx(idx), varRoundingOffset(idx));
             }
         }
         //pin the closest variable as well (in greedy mode this is the only one; in batch mode it guarantees progress)
@@ -292,8 +312,7 @@ inline bool integrate(const directional::CartesianField& field,
         {
             alreadyFixed(minIntDiffIndex) = 1;
             double func = fullx(minIntDiffIndex) ;
-            double funcInteger=std::round(func);
-            fixedValues(minIntDiffIndex) = /*pinvSymm*projMat**/funcInteger;
+            fixedValues(minIntDiffIndex) = /*pinvSymm*projMat**/roundingTarget(func, varRoundingOffset(minIntDiffIndex));
         }
         //in case all singularities are rounded in the rounding-singularities mode, but there are left unrounded seams (like topological handles).
         if ((alreadyFixed.sum()==fixedMask.sum())&&(!intData.roundSeams)&(!roundedSingularities)&&(intData.integralSeamless)) {

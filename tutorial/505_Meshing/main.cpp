@@ -37,14 +37,18 @@ ViewingModes viewingMode=FIELD;
 int main(int argc, char** argv)
 {
     //optional CLI flags:
+    //  --rounding-offset <off>  rounding target for singularities when roundSeams=false (0 = integer, 0.5 = half-integer)
     //  --epsilon-round <eps>    batch-round all values closer than eps to their target in one iteration (0 = greedy, default)
+    double roundingOffset = 0.0;
     double epsilonRound = 0.0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg == "--epsilon-round" && i + 1 < argc)
+        if (arg == "--rounding-offset" && i + 1 < argc)
+            roundingOffset = std::stod(argv[++i]);
+        else if (arg == "--epsilon-round" && i + 1 < argc)
             epsilonRound = std::stod(argv[++i]);
     }
-    std::cout<<"epsilonRound = "<<epsilonRound<<std::endl;
+    std::cout<<"roundingOffset = "<<roundingOffset<<", epsilonRound = "<<epsilonRound<<std::endl;
     
     directional::readOFF(TUTORIAL_DATA_PATH "/vase.off",meshWhole);
     ftb.init(meshWhole);
@@ -66,6 +70,7 @@ int main(int argc, char** argv)
         intData.verbose=false;
         intData.integralSeamless=true;
         intData.roundSeams=false;
+        intData.roundingOffset=roundingOffset;
         intData.epsilonRound=epsilonRound;
         
         std::cout<<"Solving integration for N="<<N[i]<<std::endl;
