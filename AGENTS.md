@@ -30,20 +30,34 @@ No JS package manager; C++ dependencies are git submodules. Docs env via `Pipfil
 ## CI
 None detected (no `.github/` workflows).
 
-## Branching & PR workflow (local sandbox env vs. upstream PRs)
-- `master` = clean upstream/fork tip. **PR branches must be based on `master` only.**
-- `sandbox-env` = `master` + local-only build-env commits (`AGENTS.md`, `tutorial/CMakeLists.txt`,
-  `tutorial/tutorial_paths.h`, `tutorial/imgui.ini`, `.sandbox-requests/`). Commit env fixes with a
-  `sandbox:` prefix; never include them in PRs.
-- Feature branches are cut from `sandbox-env` (so the local build works), e.g.
-  `feature/half-integer-rounding-targets`; keep feature commits separate from `sandbox:` commits.
-- PR-ready branch: `git checkout -b pr/<name> master && git cherry-pick <feature-shas>`.
-  Guardrail: `git diff master...pr/<name> --stat` must list only feature files.
-- The rounding features touch the same loop in `include/directional/integrate.h`, so
-  `pr/batch-rounding-epsilon` is stacked on `pr/half-integer-rounding-targets` (cherry-pick both
-  feature commits); once the half-integer PR merges upstream, the batch PR diff shrinks automatically.
-- Push `pr/*` branches from the host clone (this sandbox can only publish `sandbox/<run-id>`);
-  merge both into the fork's `main` for personal use.
+## Branching & PR workflow
+
+Three-branch model:
+
+- `master` — pristine mirror of upstream (`avaxman/Directional`). **Never commit to it.**
+  Only fast-forward it when upstream moves:
+  `git fetch origin && git checkout master && git merge --ff-only origin/master`
+- `dev` — the daily-driver branch. All normal work, env commits (AGENTS.md, gitignore,
+  setup notes, `sandbox:`-prefixed fixes) and building happen here. Push it to the fork
+  as backup: `git push origin dev`.
+- `feature/<name>` — clean PR branches cut from `master`, containing **only** feature
+  commits (no env changes). Current: `feature/rounding` (batch epsilon-rounding, then
+  singularity rounding targets stacked on top — the second uses the first's helpers).
+
+### Opening a PR
+1. Cut from `master`: `git checkout -b feature/<name> master`
+2. Work/commit there, or cherry-pick feature SHAs from `dev`:
+   `git cherry-pick <shas>`
+3. Guardrail — the diff must list only feature files:
+   `git diff master...feature/<name> --stat`
+4. Push to the fork and open the PR against `avaxman/Directional` master.
+
+### After upstream moves / a PR merges
+- Sync the mirror: `git fetch origin && git checkout master && git merge --ff-only origin/master`
+- Rebuild `dev` on top: `git rebase --onto master <old-master-sha> dev`
+  (or re-cherry-pick env commits onto the new master).
+- Once a PR merges upstream, its commits drop out of the stack automatically
+  (e.g. the batch-rounding PR's diff shrinks when the half-integer PR merges).
 
 ## Conventions
 - Header-only library: each header generally provides one function; C++20 (`CMAKE_CXX_STANDARD 20`)
