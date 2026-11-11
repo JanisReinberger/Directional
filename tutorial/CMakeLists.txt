@@ -27,12 +27,16 @@ include_directories(${DIRECTIONAL_EXTERNAL}/eigen)
 # Polyscope
 add_subdirectory(${DIRECTIONAL_EXTERNAL}/polyscope "polyscope")
 
-# Tutorial data path and output path (create dirs if needed)
-set(TUTORIAL_DATA_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data" CACHE PATH "location of tutorial data resources")
-set(TUTORIAL_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/output" CACHE PATH "location of tutorial outputs")
+# Tutorial data path and output path. Baked into the binaries as RELATIVE paths:
+# tutorial_paths.h (force-included below) chdir()s to the executable's directory
+# before main(), so "../data" resolves to the "data" folder next to "bin"/"bin-windows".
+# Override with absolute paths (-DTUTORIAL_DATA_PATH=...) if ever needed; absolute
+# paths are unaffected by the chdir().
+set(TUTORIAL_DATA_PATH "../data" CACHE PATH "location of tutorial data resources (relative to the binary)")
+set(TUTORIAL_OUTPUT_PATH "../output" CACHE PATH "location of tutorial outputs (relative to the binary)")
 
-file(MAKE_DIRECTORY "${TUTORIAL_DATA_PATH}")
-file(MAKE_DIRECTORY "${TUTORIAL_OUTPUT_PATH}")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/data")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/output")
 
 # Set runtime output dir and create
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
@@ -54,6 +58,14 @@ target_include_directories(tutorials INTERFACE
     ${POLYSCOPE_SOURCE_DIR}/deps/imgui/imgui
     ${POLYSCOPE_SOURCE_DIR}/deps/glm
 )
+
+# force-include tutorial_paths.h into every tutorial target so the relative
+# TUTORIAL_DATA_PATH / TUTORIAL_OUTPUT_PATH resolve against the binary location
+if(MSVC)
+    target_compile_options(tutorials INTERFACE /FI"${CMAKE_CURRENT_SOURCE_DIR}/tutorial_paths.h")
+else()
+    target_compile_options(tutorials INTERFACE "-include" "${CMAKE_CURRENT_SOURCE_DIR}/tutorial_paths.h")
+endif()
 
 # ===== GMP Handling (Cross-platform) =====
 if(USE_GMP)
