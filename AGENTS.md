@@ -30,6 +30,21 @@ No JS package manager; C++ dependencies are git submodules. Docs env via `Pipfil
 ## CI
 None detected (no `.github/` workflows).
 
+## Branching & PR workflow (local sandbox env vs. upstream PRs)
+- `master` = clean upstream/fork tip. **PR branches must be based on `master` only.**
+- `sandbox-env` = `master` + local-only build-env commits (`AGENTS.md`, `tutorial/CMakeLists.txt`,
+  `tutorial/tutorial_paths.h`, `tutorial/imgui.ini`, `.sandbox-requests/`). Commit env fixes with a
+  `sandbox:` prefix; never include them in PRs.
+- Feature branches are cut from `sandbox-env` (so the local build works), e.g.
+  `feature/half-integer-rounding-targets`; keep feature commits separate from `sandbox:` commits.
+- PR-ready branch: `git checkout -b pr/<name> master && git cherry-pick <feature-shas>`.
+  Guardrail: `git diff master...pr/<name> --stat` must list only feature files.
+- The rounding features touch the same loop in `include/directional/integrate.h`, so
+  `pr/batch-rounding-epsilon` is stacked on `pr/half-integer-rounding-targets` (cherry-pick both
+  feature commits); once the half-integer PR merges upstream, the batch PR diff shrinks automatically.
+- Push `pr/*` branches from the host clone (this sandbox can only publish `sandbox/<run-id>`);
+  merge both into the fork's `main` for personal use.
+
 ## Conventions
 - Header-only library: each header generally provides one function; C++20 (`CMAKE_CXX_STANDARD 20`)
 - Tutorial chapters named `NNN_Topic`, one executable per chapter named `NNN_Topic_bin`
