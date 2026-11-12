@@ -3609,3 +3609,6 @@ tutorial/output/polyvector.rawfield
 
 # personal GUI layout state (ImGui window positions)
 tutorial/imgui.ini
+
+# Legacy Remesher app (pre-rewrite reference source, kept untracked)
+Remesher/
