@@ -13,8 +13,9 @@ polyscope::SurfaceMesh* workingPsMesh = nullptr;
 
 float strength = 0.5f;       // smoothing step size in [0,1]
 int numIterations = 10;      // iterations per "Smooth" press
-int modeIndex = 0;           // 0 = ClampUp, 1 = ClampUpDown
+int modeIndex = 0;           // 0 = Uniform, 1 = Median, 2 = Clamped
 int dissolvedCount = 0;
+int lastPinned = 0, lastMoved = 0;
 
 // Snaps a few interior vertices almost onto a neighbor, creating degenerate
 // (sub-threshold) edges so that the dissolution step is actually exercised.
@@ -51,24 +52,30 @@ void callbackFunc()
 {
     ImGui::PushItemWidth(140);
     ImGui::Text("Dissolved degenerate edges: %d", dissolvedCount);
+    ImGui::Text("Last smooth: pinned=%d moved=%d", lastPinned, lastMoved);
     ImGui::SliderFloat("strength", &strength, 0.0f, 1.0f);
     ImGui::SliderInt("iterations", &numIterations, 1, 100);
-    ImGui::Combo("force mode", &modeIndex, "Clamp up to L_median\0Clamp up and down to L_median\0");
+    ImGui::Combo("boundary force", &modeIndex, "Uniform\0Normalize pinned to L_median\0Clamp short pinned up\0");
     if (ImGui::Button("Smooth")) {
         // remember boundary positions to verify they stay fixed
         Eigen::MatrixXd boundaryBefore = working.V;
-        const directional::EdgeForceMode mode = (modeIndex == 0)
-            ? directional::EdgeForceMode::ClampUp
-            : directional::EdgeForceMode::ClampUpDown;
-        directional::smooth_mesh(working, (double)strength, numIterations, mode, /*dissolveDegenerate=*/false);
+        const directional::BoundaryForceMode mode =
+            (modeIndex == 0) ? directional::BoundaryForceMode::Uniform :
+            (modeIndex == 1) ? directional::BoundaryForceMode::Median :
+                               directional::BoundaryForceMode::Clamped;
+        directional::SmoothingResult result =
+            directional::smooth_mesh(working, (double)strength, numIterations, mode, /*dissolveDegenerate=*/false);
+        lastPinned = result.pinned;
+        lastMoved = result.moved;
         double maxBoundaryDrift = 0;
         for (int i = 0; i < working.V.rows(); i++)
             if (working.isBoundaryVertex(i))
                 maxBoundaryDrift = std::max(maxBoundaryDrift,
                                             (working.V.row(i) - boundaryBefore.row(i)).norm());
         std::cout << "Smoothed " << numIterations << " iterations (strength=" << strength
-                  << ", mode=" << (modeIndex == 0 ? "ClampUp" : "ClampUpDown")
-                  << "): max boundary drift = " << maxBoundaryDrift << std::endl;
+                  << ", mode=" << (modeIndex == 0 ? "Uniform" : modeIndex == 1 ? "Median" : "Clamped")
+                  << "): pinned=" << result.pinned << ", moved=" << result.moved
+                  << ", max boundary drift = " << maxBoundaryDrift << std::endl;
         workingPsMesh->updateVertexPositions(working.V);
     }
     ImGui::SameLine();
