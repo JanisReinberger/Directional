@@ -481,6 +481,34 @@ This reads the integrated information from `intData`. Conversely to previous ver
 
 ![Example 505](images/505_Meshing.png)<p align=center><em>Left to right: polygonal meshes of the arrangements of isolines from the N=4,7,11 examples ($N=2$ is not yet supported) in [Example 502](#502-integration-in-various-orders).</em></p>
 
+### 506 Batch-rounding integration
+
+The integrator rounds the singularity and seam variables one at a time: every iteration solves for the remaining free variables and pins the single variable that is closest to its rounding target (see [503](#503-rounding-either-seams-or-singularities) and [507](#507-singularity-rounding-targets)). This is robust, but it costs one linear solve per rounded variable, which is what dominates the running time of the integration on larger meshes.
+
+Setting `intData.epsilonRound` to a positive value turns this into a *batch* rounding: in every iteration, all variables that are closer than `epsilonRound` to their rounding target are pinned at once, and the closest one is always pinned as well so that the process still makes progress. The number of iterations, and with it the number of linear solves, drops accordingly:
+
+```cpp
+intData.roundSeams = false;
+intData.epsilonRound = 0.25;    //0 = greedy one-at-a-time rounding (default)
+```
+
+The trade-off is that a variable can be pinned while it is still up to `epsilonRound` away from its target, so a larger value may change the resulting function values, and with them the isolines and the mesh extracted from them. `intData.numIterations` reports how many rounding iterations were actually performed, which makes the two modes directly comparable.
+
+This example runs the integration and meshing pipeline of [505](#505-meshing) for a single $N=4$ field (`vase.off`) with `epsilonRound` $\in \{0, 0.25, 0.5\}$. For every case it prints the number of rounding iterations, the integration and meshing times, and whether integration and meshing succeeded; a failing case is reported and skipped instead of aborting the run. The resulting polygonal meshes are then compared in the viewer. In this example the iteration count drops from 23 (greedy) to 10 and 3, the mesh has the same vertex and face counts for $0.25$, and it differs for $0.5$. Note that the meshing time is not affected by `epsilonRound`, so the total time is dominated by the meshing step.
+
+### 507 Singularity rounding targets
+
+When the singularity function values are rounded (`intData.roundSeams = false`), every value is snapped to the nearest *rounding target*. By default the targets are the integers, which is what makes the isolines of all $N$ functions meet at every singularity, and in turn what makes $N=4$ meshing produce pure quads (see [503](#503-rounding-either-seams-or-singularities) and [505](#505-meshing)).
+
+`intData.roundingOffset` shifts that lattice: a value is rounded to the nearest (integer + `roundingOffset`). With `roundingOffset = 0.5`, the singularities sit halfway between two integer levels, so no isoline passes through them, and both the isoline arrangement and the mesh extracted from it change. Seam (transition) variables are not affected: they always round to plain integers.
+
+```cpp
+intData.roundSeams = false;
+intData.roundingOffset = 0.5;   //0 = integer targets (default), 0.5 = half-integer targets
+```
+
+This example integrates the same $N=5$ field (`train-station.off`) twice, once with integer and once with half-integer targets, and shows the integer isolines of both in the viewer (use the combo box to switch between them). It also prints the rounded function values at the singularities, where the target lattice is directly visible: integers in the first case, half-integers in the second.
+
 ## Chapter 6: Cochain Complexes
 
 Directional fields, and differential forms, are objects of differential geometry where the underlying manifold is equipped with notions of gradient, curl, divergence, and where gradient fields are curl free and cogradient fields (or just "curl fields") are divergence free. These are special cases of the more abstract algebraic notion of *cochain complexes*. Without going into the full formality, such a complex is defined by a series of spaces $\Omega_i$,  $0 \leq i \leq d$, for some dimension $d$, which are related by differential operators $d_i:\Omega_i\rightarrow \Omega_{i+1}$. These spaces can be equipped with a metric $<>_i:\Omega_i \times \Omega_i \rightarrow \mathbb{R}^{+}$. Essential to the definition is that $d_{i+1}d_i=0$. For instance, scalars to vectors by the gradient operator, and then vectors to scalars (in 2D) by the curl operators comprise a cochain complex. A cochain complex also defines $i^{th}$ singular cohomologies, which are the quotient spaces $\mathbb{H}_{i}=ker(d_{i})/im(d_{i-1})$. These only arise in case of nontrivial topology, and $|\mathbb{H}_i|=\beta_i$ are called the *Betti numbers*, which are in fact generators of the topology. The fields in these spaces are called *harmonic*. The metric also defines a Hodge star $\star_i: \Omega_i\rightarrow\Omega_{d-i}$, which is a duality relation; that often defines a dual cochain with a *codifferential* operator $\delta_i = (-1)^i\star_i^{-1}d_i^T\star_{i+1}$.
