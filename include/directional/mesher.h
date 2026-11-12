@@ -36,7 +36,7 @@ namespace directional{
 //  VOutput:      all vertex coordinates of the output polygonal mesh
 //  DOutput:     |FOutput| vector of face valences
 //  FOutput:      |FOutput| x |max(DOutput)| vertex indices of the face polygons, indexed into VOutput.
-bool mesher(const directional::TriMesh& origMesh,
+inline bool mesher(const directional::TriMesh& origMesh,
             const MesherData& mData,
             Eigen::MatrixXd& VOutput,
             Eigen::VectorXi& DOutput,
@@ -49,7 +49,17 @@ bool mesher(const directional::TriMesh& origMesh,
     if (mData.verbose)
         std::cout<<"Generating mesh"<<std::endl;
     
-    functionMesher.generate_mesh();
+    // Some parameter combinations (notably integer singular rounding on meshes
+    // where isolines cross at branch points) produce an arrangement the mesher
+    // cannot stitch. The arrangement reports that as an exception so callers can
+    // treat it as a failed attempt and retry instead of aborting the process.
+    try {
+        functionMesher.generate_mesh();
+    } catch (const std::exception& error) {
+        if (mData.verbose)
+            std::cout<<"Mesh generation failed: "<<error.what()<<std::endl;
+        return false;
+    }
     if (mData.verbose)
         std::cout<<"Done generating!"<<std::endl;
     

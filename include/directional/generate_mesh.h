@@ -441,7 +441,8 @@ void NFunctionMesher::segment_arrangement(const std::vector<Segment2>& segments,
             triDcel.halfedges[currHE].face = newFace.ID;
             currHE=triDcel.halfedges[currHE].next;
             counter++;
-            assert (counter<10000 && "NFUnctionMeshes::generate_mesh(): something wrong with the generated faces");
+            if (counter >= 10000)
+                throw std::runtime_error("NFunctionMesher::segment_arrangement(): face walk did not close");
         }while (currHE!=beginHE);
         //std::cout<<std::endl;
         triDcel.faces.push_back(newFace);
@@ -449,7 +450,8 @@ void NFunctionMesher::segment_arrangement(const std::vector<Segment2>& segments,
     int numFaces=currFace;
     
     //EXPENSIVE! comment out after being sure
-    assert(triDcel.check_consistency(false, true, true, false) && "DCEL not consistent!");
+    if (!triDcel.check_consistency(false, true, true, false))
+        throw std::runtime_error("NFunctionMesher::segment_arrangement(): inconsistent arrangement DCEL");
     
     //Removing the outer face and deleting all associated halfedges
     //identifying it by the only polygon with negative signed area (expensive?)
@@ -471,7 +473,8 @@ void NFunctionMesher::segment_arrangement(const std::vector<Segment2>& segments,
             break;
         }
     }
-    assert(outerFace!=-1 && "NFunctionMeshes::generate_mesh(): Didn't find outer face!");
+    if (outerFace == -1)
+        throw std::runtime_error("NFunctionMesher::segment_arrangement(): no outer face");
     
     //invalidating outer face
     triDcel.faces[outerFace].valid=false;
@@ -490,7 +493,8 @@ void NFunctionMesher::segment_arrangement(const std::vector<Segment2>& segments,
     //removing dead edges
     triDcel.clean_mesh();
     //EXPENSIVE! comment out after being sure
-    assert(triDcel.check_consistency(false, true, true, false) && "DCEL not consistent!");
+    if (!triDcel.check_consistency(false, true, true, false))
+        throw std::runtime_error("NFunctionMesher::segment_arrangement(): inconsistent arrangement DCEL");
 }
 
 
