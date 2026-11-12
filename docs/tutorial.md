@@ -199,7 +199,9 @@ Principal directions, the directions of minimum and maximum normal curvature on 
 
 ### 107 Mesh smoothing
 
-`directional::smooth_mesh()` implements iterative, boundary-preserving mesh smoothing: every edge enacts a "force" on its endpoints, pulling them toward each other, `F_i = sum_j w_ij (v_j - v_i)`, applied as `v_i <- v_i + strength * F_i / sum_j w_ij` (Jacobi-style, `strength` in `[0,1]`, number of iterations configurable). Boundary vertices are pinned and never move, so the boundary shape is preserved. The edge weight `w_ij` has two normalization modes (`EdgeForceMode`): `ClampUp` sets `w_ij = min(L_ij, L_median)` (long edges capped at the median edge strength), while `ClampUpDown` sets `w_ij = L_median` for every edge (uniform Laplacian). Before smoothing, `directional::dissolve_degenerate_edges()` collapses edges shorter than `0.1 * L_median`; if one endpoint is a boundary vertex, the other vertex is merged into it (boundary position kept), otherwise the vertices are merged at their midpoint. In the example, a few vertices are first snapped onto their neighbors to create degenerate edges, which are then dissolved before smoothing; the pinned boundary edges are highlighted.
+`directional::smooth_mesh()` implements iterative, boundary-preserving mesh smoothing ("internal smoothing", the verified Remesher rule): a uniform Jacobi Laplacian that moves only interior vertices, `v <- v + strength * (mean of neighbors - v)`, with `strength` in `[0,1]` and a configurable number of iterations. Pinned vertices -- boundary (edges with != 2 incident faces), non-manifold (split fans) and isolated vertices -- keep their position but still exert force on their neighbors, so the boundary shape is preserved exactly. The `BoundaryForceMode` option rescales only the forces that pinned neighbors exert on interior vertices: `Uniform` (default, plain edge vectors), `Median` (rescaled to the median edge length both ways) and `Clamped` (only shorter-than-median ones scaled up). Overloads exist for triangle meshes (`V, F`), polygonal meshes (`V, D, F`) and an in-place `TriMesh` wrapper.
+
+Before smoothing, `directional::dissolve_degenerate_edges()` dissolves edges with length `<= eps` (the `TriMesh` variant uses `eps = ratio * L_median`): if one endpoint is a boundary vertex the other vertex is merged into it (boundary position kept), otherwise the vertices merge at their midpoint; non-collapsible edges are skipped so the result stays manifold, and a `vertexMap` (old to new index) is returned for remapping vertex-indexed data. `directional::median_edge_length()` computes the median over all unique face edges. In the example, a few vertices are first snapped onto their neighbors to create degenerate edges, which are then dissolved before smoothing; the pinned boundary edges are highlighted and the pinned/moved counts are logged.
 
 ## Chapter 2: Discretization and Representation
 
@@ -484,34 +486,6 @@ std::cout<<"Done!"<<std::endl;
 This reads the integrated information from `intData`. Conversely to previous version, the mesher does not necessarily need an external dependency. Nevertheless, it can optionally be sped up (considerably) by including <a href=https://gmplib.org/>GMP</a>. This is controlled by CMake within the compilation of the tutorial.
 
 ![Example 505](images/505_Meshing.png)<p align=center><em>Left to right: polygonal meshes of the arrangements of isolines from the N=4,7,11 examples ($N=2$ is not yet supported) in [Example 502](#502-integration-in-various-orders).</em></p>
-
-### 506 Batch-rounding integration
-
-The integrator rounds the singularity and seam variables one at a time: every iteration solves for the remaining free variables and pins the single variable that is closest to its rounding target (see [503](#503-rounding-either-seams-or-singularities) and [507](#507-singularity-rounding-targets)). This is robust, but it costs one linear solve per rounded variable, which is what dominates the running time of the integration on larger meshes.
-
-Setting `intData.epsilonRound` to a positive value turns this into a *batch* rounding: in every iteration, all variables that are closer than `epsilonRound` to their rounding target are pinned at once, and the closest one is always pinned as well so that the process still makes progress. The number of iterations, and with it the number of linear solves, drops accordingly:
-
-```cpp
-intData.roundSeams = false;
-intData.epsilonRound = 0.25;    //0 = greedy one-at-a-time rounding (default)
-```
-
-The trade-off is that a variable can be pinned while it is still up to `epsilonRound` away from its target, so a larger value may change the resulting function values, and with them the isolines and the mesh extracted from them. `intData.numIterations` reports how many rounding iterations were actually performed, which makes the two modes directly comparable.
-
-This example runs the integration and meshing pipeline of [505](#505-meshing) for a single $N=4$ field (`vase.off`) with `epsilonRound` $\in \{0, 0.25, 0.5\}$. For every case it prints the number of rounding iterations, the integration and meshing times, and whether integration and meshing succeeded; a failing case is reported and skipped instead of aborting the run. The resulting polygonal meshes are then compared in the viewer. In this example the iteration count drops from 23 (greedy) to 10 and 3, the mesh has the same vertex and face counts for $0.25$, and it differs for $0.5$. Note that the meshing time is not affected by `epsilonRound`, so the total time is dominated by the meshing step.
-
-### 507 Singularity rounding targets
-
-When the singularity function values are rounded (`intData.roundSeams = false`), every value is snapped to the nearest *rounding target*. By default the targets are the integers, which is what makes the isolines of all $N$ functions meet at every singularity, and in turn what makes $N=4$ meshing produce pure quads (see [503](#503-rounding-either-seams-or-singularities) and [505](#505-meshing)).
-
-`intData.roundingOffset` shifts that lattice: a value is rounded to the nearest (integer + `roundingOffset`). With `roundingOffset = 0.5`, the singularities sit halfway between two integer levels, so no isoline passes through them, and both the isoline arrangement and the mesh extracted from it change. Seam (transition) variables are not affected: they always round to plain integers.
-
-```cpp
-intData.roundSeams = false;
-intData.roundingOffset = 0.5;   //0 = integer targets (default), 0.5 = half-integer targets
-```
-
-This example integrates the same $N=5$ field (`train-station.off`) twice, once with integer and once with half-integer targets, and shows the integer isolines of both in the viewer (use the combo box to switch between them). It also prints the rounded function values at the singularities, where the target lattice is directly visible: integers in the first case, half-integers in the second.
 
 ## Chapter 6: Cochain Complexes
 
