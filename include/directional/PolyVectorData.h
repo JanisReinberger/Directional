@@ -10,6 +10,7 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <functional>
 
 namespace directional
 {
@@ -31,13 +32,35 @@ public:
     double wSmooth;                 // Weight of smoothness
     double wRoSy;                   // Weight of rotational-symmetry. "-1" means a perfect RoSy field (power field)
     Eigen::VectorXd wAlignment;     // Weight of alignment per each of the constfaces. "-1" means a fixed vector
-    Eigen::VectorXd confidence;     // The confidence in each output of the iteration functions in the previous step (how much we want to keep it). Should be between [0,1], default is "1" (so it's transparent)
+    Eigen::VectorXd confidence;     // The confidence in each output of the iteration functions in the previous step (how much we want to keep it). Should be between [0,1], default is "1" (so it's transparent). REPEL targets may deliberately push single entries above 1.0 (extra anchor strength); entries never go below 0.
+    Eigen::VectorXd faceSmoothness; // Face-level smoothness multipliers to artificially attract/repel singularities.
     double initImplicitFactor;      // Implicit smoothing factor
     double currImplicitFactor;      // The current implicit coeff in the given iteration
     double implicitScheduler;       // How much to attenuate the implicit factor with in each iteration
     int iterationMode;              // Making it possible to iterate energy reduction -> some custom projection function
     int currIteration;              // The current iteration
     bool implicitFirst;             // Whether to do the implicit step first or last
+
+    // If true (default, legacy behavior), the confidence channel also rescales
+    // the eigenvalue estimate that sets the implicit scheduler step size.
+    // If false, approxEig uses the unweighted mass so the confidence channel
+    // only shifts the anchor, never the step size.
+    bool confidenceAffectsScheduler;
+
+    // Per-iteration statistics handed to PolyVectorData::iterationCallback.
+    struct PvIterationStats {
+        int step;                    // 1-based iteration index
+        long long durationMs;        // wall time of the whole iteration
+        double energy;               // Ginzburg-Landau energy of the resulting field
+        double energyBeforeImplicit; // energy entering the implicit step
+        double energyAfterImplicit;  // energy right after the implicit step
+    };
+
+    // Optional progress hook: polyvector_iterate() calls this at the end of every
+    // iteration with the step index and the energy statistics of that iteration.
+    // Empty by default; when set, the iteration additionally evaluates the
+    // energies before and after the implicit step.
+    std::function<void(const PvIterationStats &)> iterationCallback;
  
     Eigen::SparseMatrix<std::complex<double>> smoothMat;    //Smoothness energy
     Eigen::SparseMatrix<std::complex<double>> roSyMat;      //Rotational-symmetry energy
@@ -60,7 +83,7 @@ public:
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<std::complex<double>>> reducProjSolver;           //The solver for the reduced dofs from the full dofs (in Least squares)
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<std::complex<double>>> implicitSolver;            //The solver for the implicit system
     
-    PolyVectorData():signSymmetry(true),  tb(NULL), verbose(false), wSmooth(1.0), wRoSy(0.0), iterationMode(false), currIteration(0), currImplicitFactor(0.0), initImplicitFactor(0.5), implicitScheduler(0.8), implicitFirst(true) {wAlignment.resize(0); constSpaces.resize(0); constVectors.resize(0,3);}
+    PolyVectorData():signSymmetry(true),  tb(NULL), verbose(false), wSmooth(1.0), wRoSy(0.0), iterationMode(false), currIteration(0), currImplicitFactor(0.0), initImplicitFactor(0.5), implicitScheduler(0.8), implicitFirst(true), confidenceAffectsScheduler(true) {wAlignment.resize(0); constSpaces.resize(0); constVectors.resize(0,3);}
     ~PolyVectorData(){}
 };
 
