@@ -30,57 +30,80 @@ No JS package manager; C++ dependencies are git submodules. Docs env via `Pipfil
 ## CI
 None detected (no `.github/` workflows).
 
-## Branching & PR workflow (strict runbook — agents must follow this)
+## Git branching rules (follow exactly — do not improvise)
 
-Remotes:
-- `upstream` — `avaxman/Directional`, the original library. PRs target its `master`. Read-only for us.
-- `origin` — the fork (`JanisReinberger/Directional`): backup of `dev` + source of PR branches.
+Two remotes:
+- `upstream` = the original library (`avaxman/Directional`). PRs target its `master`. Never push to it.
+- `origin` = your own fork. **Agents NEVER push. The operator pushes.**
 
-Branches:
-- `master` — pristine mirror of `upstream/master`. **Never commit here, never force-push.**
-  Update only by fast-forward:
-  `git fetch upstream && git checkout master && git merge --ff-only upstream/master`
-- `dev` — your working branch = `master` + env commits (AGENTS.md, `.sandbox/SETUP_NOTES.md`,
-  `.gitignore` tweaks, local build fixes) + any work in progress. Agent sessions run on this branch.
-  PR branches are extracted from it via cherry-pick — never merged into it.
-  Back it up (operator pushes; agents never push): `git push origin dev`
-- `feature/<name>` — ephemeral PR branch = `master` + **only** the improvement commits.
-  `dev` and `feature/*` are **siblings**: neither may ever become an ancestor of the other.
-  The same change may exist on both (dev holds a cherry-picked copy with a new SHA) — that is
-  fine; only the `feature/*` branch is ever pushed / PR'd.
-  Current: `feature/rounding` (epsilonRound + roundingOffset; `git diff master...feature/rounding`
-  touches only `include/directional/{integrate,setup_integration}.h` and the 503/505 tutorials).
+Three branches, three jobs:
 
-### Opening a PR
-1. Independent feature: `git checkout -b feature/<name> master`
-   Stacked on an open PR (uses its helpers): `git checkout -b feature/<name> feature/<parent>`
-2. Bring in the work: `git cherry-pick <shas>` from `dev` (or from the parent feature branch).
-   To continue an open PR's work on `dev`: `git checkout dev && git cherry-pick <shas-from-feature-branch>`.
-3. Guardrail — must list only library/tutorial files, never env files:
-   `git diff master...feature/<name> --stat`
-4. Operator pushes and opens the PR against `upstream/master`: `git push -u origin feature/<name>`
+| Branch | Job | Hard rule |
+|---|---|---|
+| `master` | exact mirror of `upstream/master` | NEVER commit here. Update only: `git fetch upstream && git checkout master && git merge --ff-only upstream/master` |
+| `dev` | your working branch: `master` + env files (AGENTS.md, `.sandbox/SETUP_NOTES.md`, `.gitignore`) + all features, joined by merge commits. Agent sessions run here. | never rebase / reset / rewrite it |
+| `feature/<name>` | clean PR branch = `master` + only that feature's commits. Exists only to be pushed and PR'd upstream. | create from `master` (or from a parent `feature/*` if it depends on an unmerged PR) |
+
+### 1. Normal work (most cases): commit directly on `dev`
+```bash
+git checkout dev
+# ...edit files...
+git add -A
+git commit -m "short description of the change"
+```
+No new branch needed for personal work.
+
+### 2. Finish a feature branch: merge it into `dev` (the merge commit is required)
+```bash
+git checkout dev
+git merge feature/<name> -m "Merge branch 'feature/<name>' into dev"
+```
+The merge commit is what records in the graph that the feature landed in `dev`.
+
+### 3. Offer a feature upstream as a PR
+```bash
+# a) independent feature:
+git checkout -b feature/<name> master
+# b) feature that depends on an open, unmerged PR:
+git checkout -b feature/<name> feature/<parent>
+# copy the commits over from dev:
+git cherry-pick <commit-shas>
+# GUARDRAIL — output must list ONLY files under include/ or tutorial/:
+git diff master...feature/<name> --stat
+# if it lists AGENTS.md / .gitignore / .sandbox/... → branch is dirty, start over from master
+# operator then pushes and opens the PR (agents never push):
+git push -u origin feature/<name>    # PR on GitHub, base = upstream/master
+```
+Then merge the branch into `dev` (rule 2). Example already in this repo: `feature/rounding`
+was merged into `dev` in merge commit `2212846`.
+
+### 4. Fix an existing feature
+- Feature only exists on `dev` → just commit the fix on `dev` (rule 1).
+- Feature has an open PR branch → commit the fix on `feature/<name>`; operator force-pushes it
+  (`git push -f origin feature/<name>`); then update `dev`: `git checkout dev && git merge feature/<name>`.
+- Feature already merged upstream → new branch from `master`, fix, new PR (rule 3).
+
+### 5. Keep up with upstream (merge-based — NEVER rebase `dev`)
+```bash
+git fetch upstream
+git checkout master && git merge --ff-only upstream/master
+git checkout dev && git merge upstream/master    # creates "Merge upstream/master into dev"
+```
+If a stacked PR's parent merged upstream, shrink the child branch:
+`git rebase --onto master <parent-pr-tip> feature/<child>` (drops commits already upstream).
 
 ### NEVER
-- Merge `feature/*` into `dev`, or reset/move `dev` onto a `feature/*` branch — dev stays a
-  *sibling* of feature branches, never their descendant. To get a PR branch's commits onto dev,
-  `git cherry-pick` them (new SHAs) — never `git merge`. (This mistake happened once; fixed by
-  rebuilding dev from master.)
-- Commit on `master`; force-push anything except your own `feature/<name>` after review fixes
-- Run `git filter-branch` / `filter-repo` on anything that has been pushed
-- Push from inside an agent sandbox (the operator pushes when they choose to)
+1. NEVER commit on `master`.
+2. NEVER push from an agent sandbox.
+3. NEVER run these on `dev`, `master`, or a `feature/*` branch: `git reset --hard`, `git rebase`,
+   `git branch -f`, `git filter-branch`, `git filter-repo`, `git commit --amend` on pushed commits.
+   If you think you need one: STOP and ask the operator first.
+4. NEVER force-push anything except your own open `feature/<name>` after review fixes.
+5. NEVER merge `master` into a `feature/*` branch (it would dirty the PR diff).
 
-### When upstream moves / a PR merges
-- `git fetch upstream && git checkout master && git merge --ff-only upstream/master`
-- `git rebase --onto master <old-master-sha> dev` — env commits replay cleanly; feature commits
-  that landed upstream with the same patch drop out automatically. If upstream squash-merged and
-  the rebase conflicts, recreate dev instead: `git checkout -b dev2 master && git cherry-pick <env-shas>`
-- `git branch -D feature/<name>`
-- Stacked PRs shrink automatically: `git rebase --onto master <parent-pr-tip> feature/<child>`
-
-### Pulling an open PR's review fixes back onto dev
-`git checkout dev && git cherry-pick <new-shas>` — cherry-pick, never merge.
-
-Housekeeping: `sandbox/*` branches and `refs/pi-publish/*` are agent-harness artifacts — ignore them.
+### Housekeeping
+- `sandbox/*` branches and `refs/pi-publish/*` refs are agent-harness artifacts — ignore them
+  unless the operator says otherwise.
 
 ## Conventions
 - Header-only library: each header generally provides one function; C++20 (`CMAKE_CXX_STANDARD 20`)
