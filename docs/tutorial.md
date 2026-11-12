@@ -197,6 +197,10 @@ Principal directions, the directions of minimum and maximum normal curvature on 
 
 ![Example 106](images/106_PrincipalDirections.png)<p align=center><em>The minimum (left) and maximum (right) principal directions, computed on the vertices. The respective normal curvatures are color-coded.</em></p>
 
+### 107 Mesh smoothing
+
+`directional::smooth_mesh()` implements iterative, boundary-preserving mesh smoothing: every edge enacts a "force" on its endpoints, pulling them toward each other, `F_i = sum_j w_ij (v_j - v_i)`, applied as `v_i <- v_i + strength * F_i / sum_j w_ij` (Jacobi-style, `strength` in `[0,1]`, number of iterations configurable). Boundary vertices are pinned and never move, so the boundary shape is preserved. The edge weight `w_ij` has two normalization modes (`EdgeForceMode`): `ClampUp` sets `w_ij = min(L_ij, L_median)` (long edges capped at the median edge strength), while `ClampUpDown` sets `w_ij = L_median` for every edge (uniform Laplacian). Before smoothing, `directional::dissolve_degenerate_edges()` collapses edges shorter than `0.1 * L_median`; if one endpoint is a boundary vertex, the other vertex is merged into it (boundary position kept), otherwise the vertices are merged at their midpoint. In the example, a few vertices are first snapped onto their neighbors to create degenerate edges, which are then dissolved before smoothing; the pinned boundary edges are highlighted.
+
 ## Chapter 2: Discretization and Representation
 
 In the following sections, we show some effects of working with different representations and converting between them.
