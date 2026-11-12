@@ -39,6 +39,7 @@ struct IntegrationData
     Eigen::VectorXi integerVars;                        // Variables that are to be rounded.
     Eigen::MatrixXi face2cut;                           // |F|x3 map of which edges of faces are seams
     Eigen::VectorXd nVertexFunction;                    // Final compressed result (used for meshing)
+    int numIterations;                                  // (output) Number of rounding iterations performed by the last integrate() call
     
     Eigen::VectorXi fixedIndices;                       // Translation fixing indices
     Eigen::VectorXd fixedValues;                        // Translation fixed values
@@ -59,7 +60,7 @@ struct IntegrationData
     double epsilonRound;                                // Batch-rounding threshold: if > 0, all not-yet-fixed variables whose distance to their rounding target is < epsilonRound are pinned in a single iteration (the closest one is always pinned too, to guarantee progress); 0 = greedy one-at-a-time rounding (default)
     bool verbose;                                       // Output the integration log.
     
-    IntegrationData(int _N):lengthRatio(0.02), integralSeamless(false), roundSeams(true), roundingOffset(0.0), epsilonRound(0.0), verbose(false){
+    IntegrationData(int _N):numIterations(0), lengthRatio(0.02), integralSeamless(false), roundSeams(true), roundingOffset(0.0), epsilonRound(0.0), verbose(false){
         N=_N;
         n=(N%2==0 ? N/2 : N);
         if (N%2==0)

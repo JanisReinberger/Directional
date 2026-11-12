@@ -186,8 +186,10 @@ inline bool integrate(const directional::CartesianField& field,
     }
     SparseMatrix<double> var2AllMat;
     VectorXd fullx(numVars); fullx.setZero();
+    int numIterations = 0;  //rounding iterations actually performed (reported back through intData)
     for(int intIter = 0; intIter < fixedMask.sum(); intIter++)
     {
+        numIterations++;
         //the non-fixed variables to all variables
         var2AllMat.resize(numVars, numVars - alreadyFixed.sum());
         int varCounter = 0;
@@ -266,6 +268,7 @@ inline bool integrate(const directional::CartesianField& field,
         if(lusolver.info() != Success){
             if (intData.verbose)
                 cout<<"LU decomposition failed!"<<endl;
+            intData.numIterations = numIterations;
             return false;
         }
         x = lusolver.solve(b);
@@ -383,6 +386,7 @@ inline bool integrate(const directional::CartesianField& field,
         for (int j=0;j<3;j++)
             NCornerFunctions.block(i, intData.N*j, 1, intData.N) = NFunction.row(meshCut.F(i,j)).array();
     
+    intData.numIterations = numIterations;
     return success;
     
     
