@@ -861,12 +861,18 @@ public:
             faces[i].halfedge=3*i;
             for (int j=0;j<3;j++){
                 halfedges[3*i+j].ID = 3*i+j;
+                halfedges[3*i+j].valid = true;
                 halfedges[3*i+j].vertex=F(i,j);
                 vertices[halfedges[3*i+j].vertex].halfedge=3*i+j;
                 halfedges[3*i+j].next=3*i+(j+1)%3;
                 halfedges[3*i+j].prev=3*i+(j+2)%3;
                 halfedges[3*i+j].face = i;
                 halfedges[3*i+j].edge = -1;
+                //resize() keeps old elements when re-initializing an existing
+                //DCEL; without this reset, stale twin pointers survive and
+                //corrupt the boundary structure (infinite loop in
+                //TriMesh::compute_edge_quantities)
+                halfedges[3*i+j].twin = -1;
             }
         }
         
