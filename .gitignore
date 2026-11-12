@@ -3598,6 +3598,7 @@ include/directional/Deprecated/.idea/vcs.xml
 include/directional/Deprecated/.idea/workspace.xml
 tutorial/data/vase-11-generated.off
 tutorial/data/vase-7-generated.off
+tutorial/output/*
 tutorial/output/vase-11-generated.off
 tutorial/output/vase-4-generated.off
 tutorial/output/vase-7-generated.off
@@ -3605,3 +3606,6 @@ tutorial/output/horsers-param-full-seamless.obj
 tutorial/output/horsers-param-rot-seamless.obj
 tutorial/output/index-prescription.rawfield
 tutorial/output/polyvector.rawfield
+
+# personal GUI layout state (ImGui window positions)
+tutorial/imgui.ini
