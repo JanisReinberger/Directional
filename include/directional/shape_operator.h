@@ -43,7 +43,7 @@ static std::unordered_map<int, std::set<int>> build_adjacency(const Eigen::Matri
 }
 
 // Compute shape operator (2x2 Hessian of interpolated height function in tangent frame)
-void shape_operator(const Eigen::MatrixXd& V,
+inline void shape_operator(const Eigen::MatrixXd& V,
                     const Eigen::MatrixXi& EV,
                     const Eigen::MatrixXd& VBx,
                     const Eigen::MatrixXd& VBy,
