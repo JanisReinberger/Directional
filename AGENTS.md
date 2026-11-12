@@ -68,9 +68,11 @@ git checkout -b feature/<name> master
 git checkout -b feature/<name> feature/<parent>
 # copy the commits over from dev:
 git cherry-pick <commit-shas>
-# GUARDRAIL — output must list ONLY files under include/ or tutorial/:
+# GUARDRAIL — output must list ONLY files under include/ or tutorial/ (plus .gitignore):
 git diff master...feature/<name> --stat
-# if it lists AGENTS.md / .gitignore / .sandbox/... → branch is dirty, start over from master
+# if it lists AGENTS.md / .sandbox/... → branch is dirty, start over from master
+# (.gitignore is allowed on a feature branch: ignores for generated tutorial outputs and
+#  the local ImGui layout state belong with the feature that produces them)
 # operator then pushes and opens the PR (agents never push):
 git push -u origin feature/<name>    # PR on GitHub, base = upstream/master
 ```
