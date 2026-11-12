@@ -136,6 +136,9 @@ public:
         }
         
         //gathering all boundary halfedges
+        //boundaryLoops is cleared first: compute_edge_quantities() appends to
+        //it, so re-initializing an existing TriMesh would accumulate stale loops
+        boundaryLoops.clear();
         std::vector<int> innerEdgesList, boundEdgesList, boundHalfedgesList;
         isBoundaryVertex=Eigen::VectorXi::Zero(V.size());
         isBoundaryEdge=Eigen::VectorXi::Zero(EV.size());
