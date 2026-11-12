@@ -13,6 +13,7 @@
 #include <Eigen/SparseCholesky>
 #include <Eigen/Eigenvalues>
 #include <unsupported/Eigen/Polynomials>
+#include <chrono>
 #include <iostream>
 #include <directional/TangentBundle.h>
 #include <directional/CartesianField.h>
@@ -49,7 +50,39 @@ inline void polyvector_precompute(directional::CartesianField& pvField,
     std::vector< Triplet<complex<double> > > dTriplets, WTriplets;
     if (pvData.N%2!=0) pvData.signSymmetry=false;  //it has to be for odd N
     
-    pvData.totalSmoothWeight = pvField.tb->connectionMass.sum();
+    // Optional per-face smoothness multipliers (singularity placement). The
+    // connection mass is diagonal over inner edges; each inner edge is weighted
+    // by the mean of its two incident faces' multipliers.
+    //
+    // Index invariant: connectionMass is indexed over mesh->innerEdges (size
+    // #innerEdges), while adjSpaces = EF also contains boundary edges (one side
+    // -1). Both arrays iterate the DCEL edges in ascending order, so filtering
+    // adjSpaces rows for inner edges reproduces exactly the innerEdges indexing
+    // — e_idx must count every inner edge exactly once and end at
+    // connectionMass.rows().
+    Eigen::SparseMatrix<double> modifiedConnectionMass = pvField.tb->connectionMass;
+    if (pvData.faceSmoothness.size() == pvField.tb->numSpaces) {
+        Eigen::VectorXd edgeModifiers = Eigen::VectorXd::Ones(modifiedConnectionMass.rows());
+        int e_idx = 0;
+        for (int i = 0; i < pvField.tb->adjSpaces.rows(); i++) {
+            const int f0 = pvField.tb->adjSpaces(i, 0);
+            const int f1 = pvField.tb->adjSpaces(i, 1);
+            if (f0 != -1 && f1 != -1) {
+                if (e_idx < edgeModifiers.size())
+                    edgeModifiers(e_idx) = 0.5 * (pvData.faceSmoothness(f0) + pvData.faceSmoothness(f1));
+                e_idx++;
+            }
+        }
+        assert(e_idx == edgeModifiers.size() &&
+               "faceSmoothness/adjSpaces misalignment: filtered adjSpaces rows != connectionMass rows");
+        modifiedConnectionMass = directional::sparse_diagonal(edgeModifiers) * modifiedConnectionMass;
+        // Co-normalize with the *modified* mass so ATTRACT/REPEL rescaling stays
+        // local: the global energy balance (wSmooth/totalSmoothWeight vs.
+        // RoSy/Alignment) no longer shifts with the placement weights.
+        pvData.totalSmoothWeight = modifiedConnectionMass.sum();
+    } else {
+        pvData.totalSmoothWeight = pvField.tb->connectionMass.sum();
+    }
     pvData.totalMass = pvField.tb->tangentSpaceMass.sum();
     
     //vector<Triplet<complex<double>>> WSmoothTriplets, MTriplets;
@@ -79,7 +112,7 @@ inline void polyvector_precompute(directional::CartesianField& pvField,
     std::vector<Eigen::SparseMatrix<double>> WVector, MVector;
     MatrixXi blkDiagIndices(pvData.N,2);
     for (int n=0; n<pvData.N;n++) {
-        WVector.push_back(pvField.tb->connectionMass);
+        WVector.push_back(modifiedConnectionMass);
         MVector.push_back(pvField.tb->tangentSpaceMass);
         blkDiagIndices.row(n) << n, n;
     }
@@ -258,6 +291,26 @@ inline void polyvector_precompute(directional::CartesianField& pvField,
 }
 
 
+// Total Ginzburg-Landau energy of a polyvector field state: the sum of the three
+// weighted terms that make up pvData.totalLhs (smoothness, rotational symmetry,
+// soft alignment), evaluated on the unreduced dofs. A perfectly smooth, perfectly
+// aligned, perfect-RoSy field has energy 0.
+inline double polyvector_energy(const PolyVectorData& pvData, const Eigen::VectorXcd& fullDofs)
+{
+    using namespace Eigen;
+    double energy = 0.0;
+    if (pvData.smoothMat.rows() != 0)
+        energy += std::abs((fullDofs.adjoint() * pvData.smoothMat.adjoint() * pvData.WSmooth * pvData.smoothMat * fullDofs).coeff(0, 0)) * (pvData.wSmooth / pvData.totalSmoothWeight);
+    if (pvData.roSyMat.rows() != 0)
+        energy += std::abs((fullDofs.adjoint() * (pvData.roSyMat.adjoint() * pvData.WRoSy * pvData.roSyMat) * fullDofs).coeff(0, 0)) * (pvData.wRoSy / pvData.totalRoSyWeight);
+    if (pvData.alignMat.rows() != 0) {
+        const Eigen::VectorXcd residual = pvData.alignMat * fullDofs - pvData.alignRhs;
+        energy += std::abs((residual.adjoint() * pvData.WAlign * residual).coeff(0, 0)) / pvData.totalConstrainedWeight;
+    }
+    return energy;
+}
+
+
 // Computes a polyvector field on the entire mesh, where precomputation has taken place.
 // Inputs:
 //  PolyVectorData: The data structure which should have been initialized with polyvector_precompute()
@@ -320,7 +373,12 @@ inline void polyvector_field(PolyVectorData& pvData,
         
         //approximating the smallest non-zero eigenvalues
         complex<double> energy = (0.5 * pvData.reducedDofs.adjoint() * pvData.totalLhs* pvData.reducedDofs- pvData.reducedDofs.adjoint() * pvData.totalRhs).coeff(0,0);
-        complex<double> mass = (pvData.reducedDofs.adjoint() * pvData.reducMat.adjoint()*(pvData.confidenceMat.adjoint()*pvData.M*pvData.confidenceMat)*pvData.reducMat * pvData.reducedDofs).coeff(0,0)/pvData.totalMass;
+        // With confidenceAffectsScheduler == false, the eigenvalue estimate uses
+        // the unweighted mass so the confidence channel only changes the anchor —
+        // never the scheduler step size.
+        complex<double> mass = (pvData.confidenceAffectsScheduler
+            ? (pvData.reducedDofs.adjoint() * pvData.reducMat.adjoint()*(pvData.confidenceMat.adjoint()*pvData.M*pvData.confidenceMat)*pvData.reducMat * pvData.reducedDofs).coeff(0,0)/pvData.totalMass
+            : (pvData.reducedDofs.adjoint() * pvData.reducMat.adjoint()*pvData.M*pvData.reducMat * pvData.reducedDofs).coeff(0,0)/pvData.totalMass);
         double approxEig = std::abs(energy/mass);
         pvData.currImplicitFactor = pvData.initImplicitFactor/approxEig;
         pvData.currIteration = 0;
@@ -364,9 +422,18 @@ inline void polyvector_iterate(PolyVectorData& pvData,
         if (pvData.verbose)
             std::cout<<"Iteration no. "<<pvData.currIteration<<std::endl;
         
+        // Optional progress reporting: energies are only evaluated when a
+        // callback is installed, so the default path costs nothing extra.
+        const bool reportIteration = static_cast<bool>(pvData.iterationCallback);
+        const auto iterationStart = std::chrono::high_resolution_clock::now();
+        double energyBeforeImplicit = 0.0;
+        double energyAfterImplicit = 0.0;
+        
         //An implicit step to reduce the energy
         Eigen::VectorXcd fullDofs = pvData.reducMat*pvData.reducedDofs+pvData.reducRhs;
         if (pvData.implicitFirst){
+            if (reportIteration)
+                energyBeforeImplicit = directional::polyvector_energy(pvData, fullDofs);
             if (pvData.verbose){
                 std::cout<<"Smoothness energy before implicit step: "<<std::abs((fullDofs.adjoint()*pvData.smoothMat.adjoint()*pvData.WSmooth*pvData.smoothMat*fullDofs).coeff(0,0) * (pvData.wSmooth / pvData.totalSmoothWeight))<<std::endl;
                 std::cout<<"RoSy energy before implicit step: "<<std::abs((fullDofs.adjoint()*(pvData.roSyMat.adjoint()*pvData.WRoSy*pvData.roSyMat)*fullDofs).coeff(0,0) * (pvData.wRoSy/pvData.totalRoSyWeight))<<std::endl;
@@ -378,6 +445,8 @@ inline void polyvector_iterate(PolyVectorData& pvData,
                 std::cout<<"Energy after implicit step: "<<(pvData.totalLhs*pvData.reducedDofs-pvData.totalRhs).cwiseAbs().maxCoeff()<<std::endl;
             
             fullDofs = pvData.reducMat*pvData.reducedDofs+pvData.reducRhs;
+            if (reportIteration)
+                energyAfterImplicit = directional::polyvector_energy(pvData, fullDofs);
             
             Eigen::MatrixXcd intField(pvData.tb->numSpaces, pvData.N);
             for (int i=0;i<pvData.N;i++)
@@ -409,21 +478,25 @@ inline void polyvector_iterate(PolyVectorData& pvData,
         }
         pvData.currIteration++;
         
-        
         if (!pvData.implicitFirst){
             if (pvData.verbose){
                 std::cout<<"Smoothness energy before implicit step: "<<std::abs((fullDofs.adjoint()*pvData.smoothMat.adjoint()*pvData.WSmooth*pvData.smoothMat*fullDofs).cwiseAbs().coeff(0,0) * (pvData.wSmooth / pvData.totalSmoothWeight))<<std::endl;
                 std::cout<<"RoSy energy before implicit step: "<<std::abs((fullDofs.adjoint()*(pvData.roSyMat.adjoint()*pvData.WRoSy*pvData.roSyMat)*fullDofs).cwiseAbs().coeff(0,0) * (pvData.wRoSy/pvData.totalRoSyWeight))<<std::endl;
                 std::cout<<"Energy before implicit step: "<<(pvData.totalLhs*pvData.reducedDofs-pvData.totalRhs).cwiseAbs().maxCoeff()<<std::endl;
             }
+            if (reportIteration)
+                energyBeforeImplicit = directional::polyvector_energy(pvData, fullDofs);
             pvData.implicitRhs = pvData.currImplicitFactor*pvData.totalRhs + (pvData.reducMat.adjoint()*(pvData.confidenceMat*pvData.M*pvData.confidenceMat)*pvData.reducMat * pvData.reducedDofs)/pvData.totalMass;
             Eigen::VectorXcd newReducedDofs = pvData.implicitSolver.solve(pvData.implicitRhs);
-            std::cout<<"Difference from previous solution: "<<(pvData.reducedDofs-newReducedDofs).cwiseAbs().maxCoeff()<<std::endl;
+            if (pvData.verbose)
+                std::cout<<"Difference from previous solution: "<<(pvData.reducedDofs-newReducedDofs).cwiseAbs().maxCoeff()<<std::endl;
             pvData.reducedDofs = newReducedDofs;
             if (pvData.verbose)
                 std::cout<<"Energy after implicit step: "<<(pvData.totalLhs*pvData.reducedDofs-pvData.totalRhs).cwiseAbs().maxCoeff()<<std::endl;
             
             fullDofs = pvData.reducMat*pvData.reducedDofs+pvData.reducRhs;
+            if (reportIteration)
+                energyAfterImplicit = directional::polyvector_energy(pvData, fullDofs);
             
             Eigen::MatrixXcd intField(pvData.tb->numSpaces, pvData.N);
             for (int i=0;i<pvData.N;i++)
@@ -432,6 +505,18 @@ inline void polyvector_iterate(PolyVectorData& pvData,
             pvField.set_intrinsic_field(intField);
             
             //Eigen::VectorXcd fullDofs = pvData.reducMat*pvData.reducedDofs+pvData.reducRhs;
+        }
+        
+        if (reportIteration) {
+            const Eigen::VectorXcd callbackDofs = pvData.reducMat * pvData.reducedDofs + pvData.reducRhs;
+            directional::PolyVectorData::PvIterationStats stats;
+            stats.step = pvData.currIteration;
+            stats.durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::high_resolution_clock::now() - iterationStart).count();
+            stats.energy = directional::polyvector_energy(pvData, callbackDofs);
+            stats.energyBeforeImplicit = energyBeforeImplicit;
+            stats.energyAfterImplicit = energyAfterImplicit;
+            pvData.iterationCallback(stats);
         }
         
         if (terminationFunction(pvField, pvData)){
