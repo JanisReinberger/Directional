@@ -34,6 +34,12 @@
 int N = 4;  //read_raw_field() takes N by reference
 const double epsilonRounds[NUM_CASES] = {0.0, 0.25, 0.5};
 
+//per-case data is kept alive for the whole run, since the viewer keeps pointers to it
+directional::TriMesh meshWhole, meshCut[NUM_CASES];
+directional::PCFaceTangentBundle ftb;
+directional::CartesianField rawField, combedField[NUM_CASES];
+Eigen::MatrixXd NFunction[NUM_CASES], NCornerFunction[NUM_CASES];
+
 struct CaseResult{
     double epsilonRound = 0.0;
     int iterations = 0;
@@ -57,10 +63,6 @@ double seconds_since(const std::chrono::steady_clock::time_point& start){
 
 int main()
 {
-    directional::TriMesh meshWhole;
-    directional::PCFaceTangentBundle ftb;
-    directional::CartesianField rawField;
-    
     directional::readOFF(TUTORIAL_DATA_PATH "/vase.off", meshWhole);
     ftb.init(meshWhole);
     directional::read_raw_field(TUTORIAL_DATA_PATH "/vase-4.rawfield", ftb, N, rawField);
@@ -82,10 +84,7 @@ int main()
         
         std::cout<<"=== Case "<<(c+1)<<"/"<<NUM_CASES<<": N="<<N<<", epsilonRound="<<label<<" ==="<<std::endl;
         
-        directional::TriMesh meshCut;
-        directional::CartesianField combedField;
         directional::IntegrationData intData(N);
-        Eigen::MatrixXd NFunction, NCornerFunction;
         directional::MesherData mData;
         Eigen::MatrixXd VPolyMesh;
         Eigen::VectorXi DPolyMesh;
@@ -95,7 +94,7 @@ int main()
         bool integrationSucceeded = false;
         auto integrationStart = std::chrono::steady_clock::now();
         try{
-            directional::setup_integration(rawField, intData, meshCut, combedField);
+            directional::setup_integration(rawField, intData, meshCut[c], combedField[c]);
             
             intData.verbose = false;
             intData.integralSeamless = true;
@@ -103,7 +102,7 @@ int main()
             intData.epsilonRound = epsilonRound;
             
             std::cout<<"Solving integration..."<<std::endl;
-            integrationSucceeded = directional::integrate(combedField, intData, meshCut, NFunction, NCornerFunction);
+            integrationSucceeded = directional::integrate(combedField[c], intData, meshCut[c], NFunction[c], NCornerFunction[c]);
         }catch(const std::exception& e){
             std::cerr<<"Integration raised an exception: "<<e.what()<<std::endl;
         }catch(...){
@@ -125,7 +124,7 @@ int main()
         bool meshingSucceeded = false;
         auto meshingStart = std::chrono::steady_clock::now();
         try{
-            directional::setup_mesher(meshCut, intData, mData);
+            directional::setup_mesher(meshCut[c], intData, mData);
             
             mData.verbose = false;
             std::cout<<"Meshing..."<<std::endl;
@@ -155,8 +154,8 @@ int main()
                  <<std::fixed<<std::setprecision(3)<<results[c].meshingTime<<" s"<<std::endl;
         
         // ---- viewing and saving the result ----
-        viewer.set_cartesian_field(combedField, "eps"+label+"-field", c);
-        viewer.set_isolines(meshCut, NFunction, "eps"+label+"-function", c);
+        viewer.set_cartesian_field(combedField[c], "eps"+label+"-field", c);
+        viewer.set_isolines(meshCut[c], NFunction[c], "eps"+label+"-function", c);
         
         //Viewing polygonal mesh by direct call to Polyscope (Directional Viewer doesn't natively support polygonal meshes)
         std::vector<std::vector<int>> psF; psF.resize(DPolyMesh.size());
