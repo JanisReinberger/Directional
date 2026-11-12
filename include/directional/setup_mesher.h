@@ -50,7 +50,7 @@ struct MesherData{
  Output:
  mesherData:    MesherData object suitable to pass to the mesher
  ***/
-void setup_mesher(const directional::TriMesh& meshCut,
+inline void setup_mesher(const directional::TriMesh& meshCut,
                   const IntegrationData& intData,
                   MesherData& mesherData){
     
