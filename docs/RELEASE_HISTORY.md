@@ -1,5 +1,19 @@
 # Directional Version Log
 
+## Unreleased (dev)
+
+### New library features
+
+- **Boundary-preserving mesh smoothing** (`include/directional/smooth_mesh.h`): iterative "internal smoothing" — a uniform Jacobi Laplacian that moves only interior vertices, `v ← v + strength · (mean of neighbours − v)`, with `strength ∈ [0,1]` and a configurable iteration count. Pinned vertices — boundary (edges with ≠ 2 incident faces), non-manifold (split fans) and isolated vertices — keep their position but still exert force on their neighbours, so the boundary shape is preserved exactly. The `BoundaryForceMode` option rescales only the forces that pinned neighbours exert on interior vertices: `Uniform` (default, plain edge vectors), `Median` (rescaled to the median edge length both ways) and `Clamped` (only shorter-than-median ones scaled up); on meshes without pinned vertices all modes are bit-identical. Overloads: triangle meshes (`V, F`), polygonal meshes (`V, D, F`) and an in-place `TriMesh` wrapper; the raw overloads return a `SmoothingResult { V, pinned, moved }`. Neighbour summation is deterministic (sorted, deduplicated), so repeated runs with the same inputs are bit-identical. Exemplified by tutorial 107.
+- **Degenerate-edge dissolution** (`include/directional/dissolve_degenerate_edges.h`): collapses edges with length ≤ eps, shortest first. If one endpoint is a boundary vertex, the other vertex is merged into it (the boundary node keeps its exact position); interior edges merge at their midpoint. A collapse is only performed if it satisfies the link condition, so the result always stays manifold; non-collapsible edges are skipped. Faces are repaired by dropping cyclically-consecutive repeated corners; faces keeping fewer than 3 corners are removed. Pure overloads for triangle (`V, F, eps`) and polygonal (`V, D, F, eps`) meshes return a `DegenerateEdgeDissolveResult { V, F, D, vertexMap, collapsedEdges, mergedVertices, removedFaces }`, where `vertexMap` (old → new vertex index) lets callers remap vertex-indexed data. The in-place `TriMesh` variant uses `eps = ratio · L_median` (default ratio 0.1), iterates to a fixpoint, compacts unreferenced vertices and rebuilds the mesh.
+- **Median edge length** (`include/directional/median_edge_length.h`): median over all unique face edges, with `statistics.median` semantics for even edge counts; triangle and polygonal overloads.
+- **Polygonal OBJ writer** (`include/directional/write_polygonal_obj.h`): writes a polygonal mesh (`V`, face degrees `D`, corner matrix `F`) as an ascii OBJ file with `max_digits10` precision, so coordinates round-trip bit-exactly. Complements the triangle-only `writeOBJ`.
+- **New tutorial 107_MeshSmoothing**: degrades a mesh by snapping vertices onto neighbours, dissolves the degenerate edges, then smooths interactively (strength / iterations / boundary-force-mode controls); boundary edges are highlighted and the pinned/moved counts and the (zero) boundary drift are logged.
+
+### Bug fixes
+
+- **`TriMesh` / DCEL re-initialization**: `DCEL::init()` never reset the `twin` (and `valid`) fields of the halfedges, so re-running `set_mesh()` on an already-initialized `TriMesh` kept stale twin pointers and hung in `compute_edge_quantities()` (boundary-loop tracing never closed; e.g. a 25 → 24 vertex rebuild took minutes instead of milliseconds). Additionally, `compute_edge_quantities()` appended to `boundaryLoops` instead of rebuilding it, inflating the loop count (and with it `numGenerators`) on every re-initialization. Both are fixed; re-initializing an existing `TriMesh` is now safe and bit-stable.
+
 ## Version 3.0 Changes
 
 - Libigl and CGAL are not longer dependencies.
