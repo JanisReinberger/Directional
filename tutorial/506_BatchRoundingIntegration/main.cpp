@@ -18,7 +18,7 @@
 #include <directional/directional_viewer.h>
 #include "polygonal_write_OFF.h"
 
-// 506: batch-rounding meshing benchmark.
+// 506: batch-rounding integration benchmark.
 // This is the same integration+meshing pipeline as 505_Meshing, but instead of comparing
 // different N values, it runs a single N=4 field with three values of intData.epsilonRound:
 //   0.0  - greedy rounding, one variable per iteration (the classic behavior)
@@ -182,7 +182,7 @@ int main()
     
     // ---- summary ----
     std::cout<<std::endl;
-    std::cout<<"================ Batch-rounding meshing summary (N="<<N<<", vase.off) ================"<<std::endl;
+    std::cout<<"================ Batch-rounding integration summary (N="<<N<<", vase.off) ================"<<std::endl;
     std::cout<<std::left
              <<std::setw(15)<<"epsilonRound"
              <<std::setw(12)<<"iterations"
